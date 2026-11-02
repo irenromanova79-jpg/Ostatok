@@ -1,0 +1,424 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Неснижаемый остаток</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Golos+Text:wght@400;500;600;700&family=Unbounded:wght@500;600;700&display=swap" rel="stylesheet">
+<style>
+  /* Идея: «запас в днях» — лента дней как топливная шкала казначея; всё остальное спокойно и табличное. */
+  :root{
+    --ink:#10243A;          /* текст и заголовки */
+    --paper:#F3F6F7;        /* фон страницы, лёгкий сине-зелёный оттенок */
+    --card:#FFFFFF;
+    --line:#DDE4E7;
+    --muted:#5D6F7B;
+    --accent:#0E6B73;       /* казначейский бирюзово-тёмный */
+    --accent-soft:#E2F0F0;
+    --ok:#1F8A55; --warn:#C98A1B; --bad:#C8423B;
+    --ok-soft:#E5F4EC; --warn-soft:#FBF1DE; --bad-soft:#FBE7E5;
+    --cell:#E5EBEE;
+    --g1:#0E6B73; --g2:#3A8F8C; --g3:#6E7FB8; --g4:#A3B1C2; --g5:#C9A46A;
+    --display:"Unbounded","Golos Text",system-ui,sans-serif;
+    --body:"Golos Text",system-ui,-apple-system,"Segoe UI",Roboto,Arial,sans-serif;
+    color-scheme:light;
+  }
+  @media (prefers-color-scheme:dark){
+    :root:not([data-theme="light"]){
+      --ink:#E6EEF2; --paper:#0E1820; --card:#15222C; --line:#25343F; --muted:#93A6B2;
+      --accent:#4FB3B7; --accent-soft:#183238;
+      --ok:#4CC488; --warn:#E3AE4A; --bad:#EF7A71;
+      --ok-soft:#173327; --warn-soft:#352B16; --bad-soft:#3A1F1E; --cell:#22313C;
+      --g1:#4FB3B7; --g2:#3E8F8C; --g3:#8495D0; --g4:#6D7D8E; --g5:#C9A46A;
+      color-scheme:dark;
+    }
+  }
+  :root[data-theme="dark"]{
+    --ink:#E6EEF2; --paper:#0E1820; --card:#15222C; --line:#25343F; --muted:#93A6B2;
+    --accent:#4FB3B7; --accent-soft:#183238;
+    --ok:#4CC488; --warn:#E3AE4A; --bad:#EF7A71;
+    --ok-soft:#173327; --warn-soft:#352B16; --bad-soft:#3A1F1E; --cell:#22313C;
+    --g1:#4FB3B7; --g2:#3E8F8C; --g3:#8495D0; --g4:#6D7D8E; --g5:#C9A46A;
+    color-scheme:dark;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0}
+  body{background:var(--paper);color:var(--ink);font:15px/1.5 var(--body);-webkit-font-smoothing:antialiased}
+  .wrap{max-width:1200px;margin:0 auto;padding:28px 24px 48px;display:grid;gap:20px}
+  h1,h2,h3{text-wrap:balance;margin:0}
+  .num{font-variant-numeric:tabular-nums}
+
+  /* ---------- шапка-итог ---------- */
+  .hero{background:var(--card);border:1px solid var(--line);border-radius:20px;padding:26px 28px 22px;display:grid;gap:18px}
+  .eyebrow{font-size:12px;letter-spacing:.12em;text-transform:uppercase;color:var(--accent);font-weight:700}
+  .hero-top{display:grid;grid-template-columns:minmax(0,1.25fr) minmax(0,1fr);gap:24px;align-items:end}
+  .hero h1{font:600 clamp(24px,3.2vw,34px)/1.15 var(--display);letter-spacing:-.01em;margin-top:6px}
+  .hero .lead{color:var(--muted);margin:8px 0 0;max-width:60ch}
+  .verdict{display:grid;gap:4px;justify-items:end;text-align:right}
+  .days{font:700 clamp(54px,7vw,84px)/0.95 var(--display);letter-spacing:-.03em;color:var(--state,var(--ink))}
+  .days small{font:600 .32em var(--display);letter-spacing:0;color:var(--muted);margin-left:6px}
+  .pill{display:inline-flex;align-items:center;gap:6px;padding:4px 12px;border-radius:999px;font-size:13px;font-weight:600;background:var(--state-soft);color:var(--state)}
+  .pill::before{content:"";width:8px;height:8px;border-radius:50%;background:currentColor}
+
+  .strip-wrap{display:grid;gap:8px}
+  .strip{display:grid;grid-template-columns:repeat(var(--n),1fr);gap:3px;position:relative;padding:22px 0 22px}
+  .strip i{height:26px;border-radius:4px;background:var(--cell);transition:background .25s}
+  .strip i.on{background:var(--state)}
+  .strip i.need{box-shadow:inset 0 0 0 1.5px var(--line)}
+  .mark{position:absolute;top:0;bottom:18px;width:0;border-left:2px dashed var(--ink);opacity:.75}
+  .mark.c{top:18px;bottom:0}
+  .mark.c span{top:auto;bottom:0}
+  .mark span{position:absolute;top:0;left:6px;white-space:nowrap;font-size:11.5px;font-weight:600;color:var(--ink);background:var(--card);padding:0 4px}
+  .mark.c{border-left-color:var(--ok)} .mark.c span{color:var(--ok)}
+  .mark.flip span{left:auto;right:6px}
+  .scale{display:flex;justify-content:space-between;font-size:12px;color:var(--muted)}
+
+  .figs{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:1px;background:var(--line);border:1px solid var(--line);border-radius:14px;overflow:hidden}
+  .fig{background:var(--card);padding:14px 16px;display:grid;gap:2px}
+  .fig .l{font-size:12px;color:var(--muted);font-weight:600}
+  .fig .v{font:600 22px/1.2 var(--display);letter-spacing:-.01em;white-space:nowrap}
+  .fig .s{font-size:12px;color:var(--muted)}
+  .fig.gap .v{color:var(--state)}
+
+  /* ---------- рабочая часть ---------- */
+  .main{display:grid;grid-template-columns:minmax(0,1.15fr) minmax(0,1fr);gap:20px;align-items:start}
+  .col{display:grid;gap:20px}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:18px;padding:20px 22px}
+  .card h2{font:600 16px/1.3 var(--display);letter-spacing:-.005em;display:flex;align-items:baseline;gap:10px}
+  .card h2 .step{font:700 12px var(--body);color:var(--accent);background:var(--accent-soft);border-radius:6px;padding:2px 7px}
+  .card .sub{color:var(--muted);font-size:13px;margin:6px 0 14px}
+
+  .structure{display:flex;height:10px;border-radius:6px;overflow:hidden;background:var(--cell);margin:2px 0 6px}
+  .structure b{display:block;height:100%;transition:width .25s}
+  .legend{display:flex;flex-wrap:wrap;gap:6px 14px;font-size:12px;color:var(--muted);margin-bottom:6px}
+  .legend span{display:inline-flex;align-items:center;gap:6px}
+  .legend span::before{content:"";width:9px;height:9px;border-radius:3px;background:var(--c)}
+
+  .grp{display:flex;justify-content:space-between;align-items:center;margin:16px 0 4px;padding-bottom:6px;border-bottom:2px solid var(--c)}
+  .grp span:first-child{font-weight:700;font-size:13px;letter-spacing:.02em}
+  .grp span:last-child{font-weight:600;font-size:13px;color:var(--muted)}
+  .row{display:grid;grid-template-columns:1fr 160px;gap:12px;align-items:center;padding:6px 0;border-bottom:1px solid var(--line)}
+  .row label{font-size:14px}
+  .row small{display:block;color:var(--muted);font-size:12px;line-height:1.35}
+  .row.custom{grid-template-columns:1fr 140px 28px}
+  input[type=text]{width:100%;padding:8px 11px;border:1px solid var(--line);border-radius:10px;font:500 14.5px var(--body);text-align:right;
+    font-variant-numeric:tabular-nums;background:var(--paper);color:var(--ink);transition:border-color .15s, background .15s}
+  input[type=text]:hover{border-color:var(--muted)}
+  input[type=text]:focus{outline:none;border-color:var(--accent);background:var(--card);box-shadow:0 0 0 3px var(--accent-soft)}
+  input.nm{text-align:left}
+  .del{border:0;background:none;color:var(--muted);font-size:20px;cursor:pointer;line-height:1;padding:0;border-radius:6px}
+  .del:hover,.del:focus-visible{color:var(--bad)}
+  .add{margin-top:12px;width:100%;padding:10px;border:1.5px dashed var(--line);border-radius:12px;background:none;color:var(--accent);font:600 14px var(--body);cursor:pointer}
+  .add:hover,.add:focus-visible{border-color:var(--accent);background:var(--accent-soft)}
+  .total{display:flex;justify-content:space-between;align-items:baseline;margin-top:14px;padding-top:12px;border-top:2px solid var(--ink)}
+  .total span:first-child{font-weight:700}
+  .total span:last-child{font:600 20px var(--display)}
+  .note{font-size:12.5px;color:var(--muted);margin-top:8px}
+
+  .risk{display:grid;grid-template-columns:22px 1fr auto;gap:10px;align-items:center;padding:9px 10px;border-radius:10px;cursor:pointer;transition:background .15s}
+  .risk:hover{background:var(--paper)}
+  .risk input{width:18px;height:18px;accent-color:var(--accent);margin:0}
+  .risk .d{font-weight:700;font-size:13px;padding:2px 8px;border-radius:999px;white-space:nowrap}
+  .risk .d.plus{color:var(--bad);background:var(--bad-soft)} .risk .d.minus{color:var(--ok);background:var(--ok-soft)}
+  .hz{display:grid;grid-template-columns:auto 1fr auto;gap:14px;align-items:center;margin-top:14px;padding:14px;border-radius:12px;background:var(--paper)}
+  .hz label{font-weight:600}
+  .hz input{width:100%;accent-color:var(--accent)}
+  .hz b{font:600 20px var(--display);min-width:84px;text-align:right}
+  .hint{font-size:12.5px;color:var(--muted);margin-top:8px}
+
+  .alert{border-radius:12px;padding:11px 14px;font-size:14px;border-left:4px solid var(--c);background:var(--cs);margin-top:10px}
+  .alert.red{--c:var(--bad);--cs:var(--bad-soft)} .alert.amber{--c:var(--warn);--cs:var(--warn-soft)} .alert.green{--c:var(--ok);--cs:var(--ok-soft)}
+  .explain{white-space:pre-wrap;background:var(--paper);border-radius:12px;padding:16px;font-size:14px;line-height:1.6;max-height:420px;overflow:auto}
+  .btns{display:flex;gap:10px;margin-top:12px;flex-wrap:wrap;align-items:center}
+  button.primary,button.ghost{border-radius:10px;padding:10px 16px;font:600 14px var(--body);cursor:pointer}
+  button.primary{background:var(--accent);color:#fff;border:1px solid var(--accent)}
+  button.primary:hover{filter:brightness(1.08)}
+  button.ghost{background:none;color:var(--ink);border:1px solid var(--line)}
+  button.ghost:hover{border-color:var(--muted)}
+  :focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+  .how{margin:0;padding:0;list-style:none;display:grid;gap:10px;counter-reset:s}
+  .how li{display:grid;grid-template-columns:26px 1fr;gap:10px;font-size:14px;counter-increment:s}
+  .how li::before{content:counter(s);width:26px;height:26px;border-radius:50%;display:grid;place-items:center;background:var(--accent-soft);color:var(--accent);font:700 12px var(--body)}
+  .copy-ok{font-size:13px;color:var(--ok)}
+
+  @media (max-width:920px){
+    .hero-top,.main{grid-template-columns:1fr}
+    .verdict{justify-items:start;text-align:left}
+    .figs{grid-template-columns:repeat(2,minmax(0,1fr))}
+  }
+  @media (max-width:480px){
+    .wrap{padding:16px 16px 36px;gap:14px}
+    .hero,.card{padding:18px 16px;border-radius:16px}
+    .row{grid-template-columns:1fr 120px}
+    .row.custom{grid-template-columns:1fr 100px 24px}
+    .strip{gap:2px} .strip i{height:20px;border-radius:3px}
+    .fig .v{font-size:18px}
+  }
+  @media (prefers-reduced-motion:reduce){ *{transition:none!important} }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <section class="hero" id="hero">
+    <div class="hero-top">
+      <div>
+        <div class="eyebrow">Финансовая безопасность</div>
+        <h1>Сколько денег держать на счёте</h1>
+        <p class="lead">Сколько дней компания проживёт на текущем остатке, если поступления остановятся, и какой остаток нужен, чтобы закрыть налоги, зарплату и кредиты.</p>
+      </div>
+      <div class="verdict">
+        <div class="days num" id="daysBig"></div>
+        <span class="pill" id="pill"></span>
+      </div>
+    </div>
+    <div class="strip-wrap">
+      <div class="strip" id="strip"></div>
+      <div class="scale"><span>сегодня</span><span id="scaleEnd"></span></div>
+    </div>
+    <div class="figs" id="figs"></div>
+  </section>
+
+  <div class="main">
+    <div class="col">
+      <section class="card">
+        <h2><span class="step">1</span>Обязательные платежи в месяц</h2>
+        <p class="sub">Средние за последние 3–6 месяцев, в рублях. Пустые строки — ноль. Обычных поставщиков не включайте: их можно перенести.</p>
+        <div class="structure" id="structure"></div>
+        <div class="legend" id="legend"></div>
+        <div id="mand"></div>
+        <button class="add" id="addBtn" type="button">+ Добавить свою статью</button>
+        <div class="total"><span>Итого в месяц</span><span class="num" id="mandTotal"></span></div>
+      </section>
+    </div>
+
+    <div class="col">
+      <section class="card">
+        <h2><span class="step">2</span>Риски и горизонт</h2>
+        <p class="sub">База — 14 дней без поступлений. Отметьте, что относится к компании.</p>
+        <div id="risks"></div>
+        <div class="hz"><label for="hz">Горизонт</label><input type="range" id="hz" min="7" max="90" step="1"><b class="num" id="hzVal"></b></div>
+        <div class="hint" id="hzHint"></div>
+      </section>
+
+      <section class="card">
+        <h2><span class="step">3</span>Остаток и проверка</h2>
+        <p class="sub">Текущий остаток нужен для расчёта запаса. Худший месяц и кредитная линия — по желанию.</p>
+        <div id="extra"></div>
+        <div id="alerts"></div>
+      </section>
+
+      <section class="card">
+        <h2>Текст для собственника</h2>
+        <p class="sub">Готовое пояснение — скопируйте в письмо или мессенджер.</p>
+        <div class="explain" id="explain"></div>
+        <div class="btns"><button class="primary" id="copyBtn" type="button">Скопировать текст</button><button class="ghost" id="resetBtn" type="button">Вернуть пример</button><span class="copy-ok" id="copyHint" role="status"></span></div>
+      </section>
+
+      <section class="card">
+        <h2>Как считается</h2>
+        <ol class="how" style="margin-top:14px">
+          <li><span><b>Минимум</b> — обязательные платежи в месяц ÷ 30 × горизонт в днях.</span></li>
+          <li><span><b>Комфортный</b> — минимум плюс ещё 14 дней обязательных платежей, но не меньше худшего месячного дефицита ЧДП.</span></li>
+          <li><span><b>Кредитная линия</b> заменяет часть резерва, но собственными деньгами держим не меньше половины минимума: лимит банк может сократить.</span></li>
+          <li><span><b>Запас в днях</b> — текущий остаток ÷ дневная сумма обязательных платежей.</span></li>
+        </ol>
+        <p class="note">Это ориентир для политики остатков. Разрывы внутри месяца (налоги 28-го, оплата клиента 30-го) видны только в платёжном календаре по неделям.</p>
+      </section>
+    </div>
+  </div>
+</div>
+
+<script>
+// [ключ, статья, подсказка, пример суммы в месяц, группа]
+const GROUPS = ["Налоги и взносы","Персонал","Кредиты и долги","Содержание бизнеса","Критичные поставщики и прочее"];
+const GCOL = ["var(--g1)","var(--g2)","var(--g3)","var(--g4)","var(--g5)"];
+const MAND = [
+  ["vat","НДС","к уплате в бюджет, 1/3 квартальной суммы", 1400000, 0],
+  ["profit","Налог на прибыль / УСН","авансы", 600000, 0],
+  ["ndfl","НДФЛ","13–15% с зарплаты", 400000, 0],
+  ["ins","Страховые взносы","с зарплаты и вознаграждений", 800000, 0],
+  ["prop","Имущество, транспорт, земля","в пересчёте на месяц", 0, 0],
+  ["taxdebt","Рассрочка / требования ФНС","платёж по графику", 0, 0],
+  ["sal","Зарплата","к выплате на руки, без НДФЛ и взносов", 2600000, 1],
+  ["bonus","Премии, отпускные, компенсации","в среднем за месяц", 0, 1],
+  ["gph","Подрядчики-физлица, самозанятые","ГПХ, постоянные исполнители", 0, 1],
+  ["loan","Погашение кредитов и займов","тело долга по графику", 1500000, 2],
+  ["int","Проценты по кредитам","", 250000, 2],
+  ["lease","Лизинг","", 600000, 2],
+  ["court","Мировые соглашения, исполнительные листы","платежи по графику", 0, 2],
+  ["rent","Аренда","офис, склад, производство, техника", 450000, 3],
+  ["util","Коммунальные услуги","электричество, вода, отопление", 0, 3],
+  ["it","Связь, интернет, ПО и подписки","1С, CRM, облака, телефония", 120000, 3],
+  ["bank","Банковское обслуживание","тарифы, эквайринг, комиссии", 30000, 3],
+  ["insur","Страхование","ОСАГО, КАСКО, имущество — в пересчёте на месяц", 0, 3],
+  ["outs","Охрана, уборка, аутсорс","бухгалтерия, юристы, клининг", 150000, 3],
+  ["crit","Критичные поставщики","без них остановится работа", 0, 4],
+  ["other","Прочие неотложные","", 0, 4],
+];
+const RISKS = [
+  ["conc","Один клиент даёт больше 30% поступлений", 14],
+  ["defer","Отсрочка покупателям больше 30 дней", 7],
+  ["noline","Нет кредитной линии или овердрафта", 7],
+  ["season","Выраженная сезонность выручки", 7],
+  ["debt","Крупное погашение кредита в ближайшие 3 месяца или ковенанты банка", 7],
+  ["gov","Госзаказчики, проектные оплаты по актам", 7],
+  ["prepay","Работаем по предоплате", -4],
+  ["many","Много мелких клиентов, оплаты каждый день", -4],
+];
+const EXTRA = [
+  ["bal","Текущий остаток на счетах","на сегодня", 4000000],
+  ["worst","Худший месячный ЧДП за год","со знаком минус, например −6 000 000", -6000000],
+  ["line","Неиспользованный лимит кредитной линии","0, если линии нет", 0],
+];
+const DEFAULT_RISKS = ["conc","noline"];
+const BASE = 14, EXTRA_DAYS = 14;
+
+const nf0 = new Intl.NumberFormat("ru-RU",{maximumFractionDigits:0});
+const rub = x => (x<0?"−":"") + nf0.format(Math.abs(Math.round(x))) + " ₽";
+const short = x => { const a=Math.abs(x), s=x<0?"−":""; return a>=1e6 ? s+(a/1e6).toFixed(1).replace(".",",")+" млн ₽" : a>=1e3 ? s+nf0.format(Math.round(a/1e3))+" тыс. ₽" : s+nf0.format(a)+" ₽"; };
+const parse = s => { const v = parseFloat(String(s).replace(/\s| /g,"").replace("−","-").replace(",",".")); return isNaN(v)?0:v; };
+const fmtIn = v => (v<0?"−":"") + nf0.format(Math.abs(v));
+const plural = (n, a, b, c) => { n=Math.abs(n)%100; const n1=n%10; return n>10&&n<20?c : n1>1&&n1<5?b : n1===1?a : c; };
+const esc = s => String(s).replace(/[&<>"]/g, c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+
+const S = {v:{}, risks:new Set(DEFAULT_RISKS), hz:null, hzManual:false};
+let CUSTOM = [], nextId = 1;
+
+function rowsHtml(list){ return list.map(([k,l,h])=>`<div class="row"><label for="${k}">${l}${h?`<small>${h}</small>`:""}</label><input type="text" inputmode="decimal" id="${k}" placeholder="0" autocomplete="off"></div>`).join(""); }
+function mandHtml(){
+  return GROUPS.map((g,gi)=>`<div class="grp" style="--c:${GCOL[gi]}"><span>${g}</span><span class="num" id="g${gi}"></span></div>` + rowsHtml(MAND.filter(r=>r[4]===gi))
+    + (gi===GROUPS.length-1 ? CUSTOM.map(c=>`<div class="row custom"><input type="text" class="nm" data-c="${c.id}" id="${c.id}-name" placeholder="Название статьи" value="${esc(c.name)}" aria-label="Название статьи"><input type="text" inputmode="decimal" id="${c.id}" placeholder="0" aria-label="Сумма в месяц"><button class="del" data-del="${c.id}" title="Удалить статью" aria-label="Удалить статью" type="button">×</button></div>`).join("") : "")).join("");
+}
+function drawMand(){
+  document.getElementById("mand").innerHTML = mandHtml();
+  [...MAND.map(r=>r[0]), ...CUSTOM.map(c=>c.id)].forEach(k=>{ const el=document.getElementById(k); el.value = S.v[k] ? fmtIn(S.v[k]) : ""; bindNum(k); });
+}
+document.getElementById("extra").innerHTML = rowsHtml(EXTRA);
+document.getElementById("risks").innerHTML = RISKS.map(([k,l,d])=>`<label class="risk" for="r-${k}"><input type="checkbox" id="r-${k}" data-r="${k}"><span>${l}</span><span class="d ${d>0?"plus":"minus"}">${d>0?"+":"−"}${Math.abs(d)} дн.</span></label>`).join("");
+document.getElementById("legend").innerHTML = GROUPS.map((g,gi)=>`<span style="--c:${GCOL[gi]}">${g}</span>`).join("");
+
+function load(){
+  CUSTOM = []; S.v = {};
+  [...MAND,...EXTRA].forEach(([k,,,v])=>{ S.v[k]=v; });
+  drawMand();
+  EXTRA.forEach(([k,,,v])=>{ document.getElementById(k).value=fmtIn(v); });
+  S.risks = new Set(DEFAULT_RISKS); S.hzManual=false;
+  document.querySelectorAll("[data-r]").forEach(c=>c.checked=S.risks.has(c.dataset.r));
+}
+const rawHz = () => BASE + RISKS.filter(([k])=>S.risks.has(k)).reduce((s,[,,d])=>s+d,0);
+const autoHz = () => Math.min(90, Math.max(7, rawHz()));
+
+function calc(){
+  const keys = [...MAND.map(r=>r[0]), ...CUSTOM.map(c=>c.id)];
+  const mand = keys.reduce((s,k)=>s+(S.v[k]||0),0), daily = mand/30;
+  const hz = S.hzManual ? S.hz : autoHz();
+  const minimum = daily*hz;
+  const worst = S.v.worst<0 ? -S.v.worst : 0;
+  const comfort = Math.max(daily*(hz+EXTRA_DAYS), worst);
+  const ownMin = Math.max(minimum - S.v.line, minimum/2);
+  const cover = daily>0 ? S.v.bal/daily : null;
+  const gap = Math.max(0, ownMin - S.v.bal);
+  const worstDays = daily>0 && worst>0 ? Math.ceil(worst/daily) : null;
+  return {mand, daily, hz, auto:autoHz(), minimum, comfort, ownMin, cover, gap, worst, worstDays};
+}
+
+function render(){
+  const r = calc();
+  const gsum = GROUPS.map((g,gi)=> MAND.filter(x=>x[4]===gi).reduce((s,[k])=>s+(S.v[k]||0),0) + (gi===GROUPS.length-1 ? CUSTOM.reduce((s,c)=>s+(S.v[c.id]||0),0) : 0));
+  r.groups = gsum; window.__calc = r;
+
+  // статус
+  const st = r.mand<=0 ? "warn" : S.v.bal < r.ownMin ? "bad" : S.v.bal < r.comfort ? "warn" : "ok";
+  const hero = document.getElementById("hero");
+  hero.style.setProperty("--state", `var(--${st})`); hero.style.setProperty("--state-soft", `var(--${st}-soft)`);
+  const cd = r.cover==null ? null : Math.max(0, Math.floor(r.cover));
+  document.getElementById("daysBig").innerHTML = cd==null ? "—" : `${cd}<small>${plural(cd,"день","дня","дней")} запаса</small>`;
+  document.getElementById("pill").textContent = r.mand<=0 ? "Введите обязательные платежи"
+    : st==="bad" ? `Ниже минимума: нужно ${r.hz} ${plural(r.hz,"день","дня","дней")}` : st==="warn" ? "Минимум есть, до комфорта не хватает" : "Остаток в безопасной зоне";
+
+  // лента дней
+  const comfortDays = r.daily>0 ? Math.ceil(r.comfort/r.daily) : r.hz+EXTRA_DAYS;
+  const ownMinDays = r.daily>0 ? r.ownMin/r.daily : r.hz;
+  const N = Math.min(120, Math.max(30, comfortDays + 4, (cd||0) + 2));
+  const strip = document.getElementById("strip"); strip.style.setProperty("--n", N);
+  let cells = ""; for(let i=0;i<N;i++) cells += `<i class="${i<(cd||0)?"on":i<ownMinDays?"need":""}"></i>`;
+  const pos = d => Math.min(100, d/N*100);
+  const mk = (d, cls, label) => `<div class="mark ${cls} ${pos(d)>78?"flip":""}" style="left:${pos(d)}%"><span>${label}</span></div>`;
+  strip.innerHTML = cells + mk(ownMinDays, "", `минимум · ${Math.round(ownMinDays)} дн.`) + (comfortDays<=N ? mk(comfortDays, "c", `комфорт · ${comfortDays} дн.`) : "");
+  document.getElementById("scaleEnd").textContent = `${N} дн.`;
+  strip.setAttribute("role","img");
+  strip.setAttribute("aria-label", `Запас ${cd??0} дн.; минимум ${Math.round(ownMinDays)} дн.; комфортный уровень ${comfortDays} дн.`);
+
+  const lineNote = S.v.line>0 ? `собственными ${short(r.ownMin)}, остальное — кредитная линия` : `${r.hz} ${plural(r.hz,"день","дня","дней")} обязательных платежей`;
+  const gapTxt = S.v.bal < r.ownMin ? ["Не хватает до минимума", short(r.gap), "чтобы выйти из красной зоны"]
+               : S.v.bal < r.comfort ? ["До комфортного уровня", short(r.comfort - S.v.bal), "минимум уже есть"]
+               : ["Сверх комфортного уровня", short(S.v.bal - r.comfort), "можно разместить или гасить долг"];
+  document.getElementById("figs").innerHTML =
+    `<div class="fig"><span class="l">Остаток сейчас</span><span class="v num">${short(S.v.bal)}</span><span class="s">${rub(r.daily)} обязательных в день</span></div>`+
+    `<div class="fig"><span class="l">Минимум</span><span class="v num">${short(S.v.line>0?r.ownMin:r.minimum)}</span><span class="s">${lineNote}</span></div>`+
+    `<div class="fig"><span class="l">Комфортный</span><span class="v num">${short(r.comfort)}</span><span class="s">${r.worst>0 && r.worst>r.daily*(r.hz+EXTRA_DAYS) ? "покрывает худший месяц" : `${r.hz+EXTRA_DAYS} дн. обязательных`}</span></div>`+
+    `<div class="fig gap"><span class="l">${gapTxt[0]}</span><span class="v num">${gapTxt[1]}</span><span class="s">${gapTxt[2]}</span></div>`;
+
+  // платежи
+  document.getElementById("mandTotal").textContent = rub(r.mand);
+  gsum.forEach((v,gi)=>{ document.getElementById("g"+gi).textContent = v ? rub(v) : "—"; });
+  document.getElementById("structure").innerHTML = r.mand>0 ? gsum.map((v,gi)=>`<b style="width:${v/r.mand*100}%;background:${GCOL[gi]}" title="${GROUPS[gi]}: ${Math.round(v/r.mand*100)}%"></b>`).join("") : "";
+
+  // горизонт
+  document.getElementById("hz").value = r.hz;
+  document.getElementById("hzVal").textContent = `${r.hz} дн.`;
+  document.getElementById("hzHint").textContent = S.hzManual
+    ? `Задано вручную. По факторам риска получилось бы ${r.auto} дн.`
+    : `14 дн. базы ${RISKS.filter(([k])=>S.risks.has(k)).map(([,,d])=>(d>0?"+ ":"− ")+Math.abs(d)).join(" ")} = ${rawHz()} дн${rawHz()!==r.auto ? `. → ограничено до ${r.auto} дн. (допустимо 7–90)` : "."} Ползунком можно задать вручную.`;
+
+  // предупреждения
+  const al = [];
+  if(r.mand<=0) al.push(["amber","Введите обязательные платежи — без них расчёт невозможен."]);
+  else if(S.v.bal < r.ownMin) al.push(["red",`Остаток ниже минимума на ${short(r.gap)}. Без поступлений компания продержится около ${Math.floor(r.cover)} дн. — меньше горизонта ${r.hz} дн.`]);
+  else if(S.v.bal < r.comfort) al.push(["amber",`Минимум есть, до комфортного уровня не хватает ${short(r.comfort-S.v.bal)}.`]);
+  else al.push(["green",`Остаток выше комфортного уровня на ${short(S.v.bal-r.comfort)}. Излишек можно разместить на депозите или направить на погашение дорогого долга.`]);
+  if(r.worstDays && r.worstDays > r.hz) al.push(["amber",`Худший месяц (${short(-r.worst)}) равен ${r.worstDays} дн. обязательных платежей — больше горизонта. Стоит увеличить горизонт или держать комфортный уровень.`]);
+  document.getElementById("alerts").innerHTML = al.map(([c,t])=>`<div class="alert ${c}">${t}</div>`).join("");
+
+  // пояснение
+  const rk = RISKS.filter(([k])=>S.risks.has(k)).map(([,l,d])=>`— ${l.toLowerCase()} (${d>0?"+":"−"}${Math.abs(d)} дн.)`);
+  document.getElementById("explain").textContent =
+`Сколько держать на счёте
+
+Обязательные платежи — ${rub(r.mand)} в месяц, это ${rub(r.daily)} в день:
+${GROUPS.map((g,gi)=>[g,gsum[gi]]).filter(([,v])=>v>0).map(([g,v])=>`— ${g.toLowerCase()}: ${rub(v)} (${Math.round(v/r.mand*100)}%)`).join("\n")}
+
+Горизонт — ${r.hz} дн. без поступлений.${rk.length ? "\nУчтены факторы риска:\n"+rk.join("\n") : ""}
+
+Минимальный остаток: ${rub(r.minimum)}${S.v.line>0 ? `, из них собственными деньгами не меньше ${rub(r.ownMin)} (остальное — неиспользованная кредитная линия)` : ""}.
+Комфортный остаток: ${rub(r.comfort)}.
+
+Сейчас на счетах ${rub(S.v.bal)} — этого хватит примерно на ${r.cover==null?"—":Math.floor(r.cover)} дн. обязательных платежей.${S.v.bal<r.ownMin ? ` Не хватает до минимума: ${rub(r.gap)}.` : S.v.bal<r.comfort ? ` До комфортного уровня: ${rub(r.comfort-S.v.bal)}.` : " Остаток в безопасной зоне."}`;
+}
+
+// события
+function bindNum(k){ const el=document.getElementById(k);
+  el.addEventListener("input", ()=>{ S.v[k]=parse(el.value); render(); });
+  el.addEventListener("blur", ()=>{ el.value = S.v[k] ? fmtIn(S.v[k]) : (EXTRA.some(e=>e[0]===k) ? "0" : ""); }); }
+EXTRA.forEach(([k])=>bindNum(k));
+document.getElementById("addBtn").onclick = ()=>{ const id="c"+(nextId++); CUSTOM.push({id, name:""}); S.v[id]=0; drawMand(); render();
+  const nm=document.querySelector(`[data-c="${id}"]`); if(nm) nm.focus(); };
+document.getElementById("mand").addEventListener("click", e=>{ const d=e.target.dataset.del; if(!d) return;
+  CUSTOM = CUSTOM.filter(c=>c.id!==d); delete S.v[d]; drawMand(); render(); });
+document.getElementById("mand").addEventListener("input", e=>{ const c=e.target.dataset.c; if(!c) return;
+  const it=CUSTOM.find(x=>x.id===c); if(it) it.name=e.target.value; });
+document.getElementById("risks").addEventListener("change", e=>{ const k=e.target.dataset.r; if(!k) return; e.target.checked?S.risks.add(k):S.risks.delete(k); S.hzManual=false; render(); });
+document.getElementById("hz").addEventListener("input", e=>{ S.hz=+e.target.value; S.hzManual=true; render(); });
+document.getElementById("resetBtn").onclick = ()=>{ load(); render(); document.getElementById("copyHint").textContent=""; };
+document.getElementById("copyBtn").onclick = async ()=>{
+  const t = document.getElementById("explain").textContent, h = document.getElementById("copyHint");
+  try { await navigator.clipboard.writeText(t); h.textContent = "Скопировано"; }
+  catch(e){ const rg=document.createRange(); rg.selectNodeContents(document.getElementById("explain")); const s=getSelection(); s.removeAllRanges(); s.addRange(rg); h.textContent = "Текст выделен — нажмите Ctrl+C (⌘+C)"; }
+};
+load(); render();
+</script>
+</body>
+</html>
